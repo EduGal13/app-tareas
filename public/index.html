@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mis tareas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --fondo: #EEF2F0;
+      --papel: #FFFFFF;
+      --tinta: #1C2B36;
+      --suave: #5D6B73;
+      --jade: #1E7A63;
+      --jade-claro: #D5EBE3;
+      --borde: #CBD5D1;
+      --rojo: #B3362C;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --fondo: #131B20;
+        --papel: #1C262C;
+        --tinta: #E6ECEA;
+        --suave: #9AA8AE;
+        --jade: #4FBF9C;
+        --jade-claro: #1F3A33;
+        --borde: #33424A;
+        --rojo: #E5756B;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--fondo);
+      color: var(--tinta);
+      font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
+      font-size: 1.0625rem;
+      line-height: 1.5;
+      display: flex;
+      justify-content: center;
+      padding: 3rem 1rem;
+    }
+    main { width: 100%; max-width: 34rem; }
+    h1 { font-size: 2.25rem; margin: 0 0 .25rem; letter-spacing: -0.01em; }
+    .resumen { color: var(--suave); margin: 0 0 1.75rem; }
+    form { display: flex; gap: .5rem; margin-bottom: 1.5rem; }
+    input[type="text"] {
+      flex: 1;
+      font: inherit;
+      padding: .75rem .9rem;
+      border: 2px solid var(--borde);
+      border-radius: 10px;
+      background: var(--papel);
+      color: var(--tinta);
+    }
+    input[type="text"]:focus { outline: none; border-color: var(--jade); }
+    button {
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      border-radius: 10px;
+    }
+    .agregar { background: var(--jade); color: #fff; padding: 0 1.25rem; }
+    .agregar:focus-visible, .borrar:focus-visible, input[type="checkbox"]:focus-visible {
+      outline: 3px solid var(--jade); outline-offset: 2px;
+    }
+    ul { list-style: none; margin: 0; padding: 0; background: var(--papel); border-radius: 14px; overflow: hidden; }
+    li {
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      padding: .85rem 1rem;
+      border-bottom: 1px solid var(--borde);
+    }
+    li:last-child { border-bottom: none; }
+    li.hecha { background: var(--jade-claro); }
+    li.hecha span { text-decoration: line-through; color: var(--suave); }
+    input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--jade); }
+    li span { flex: 1; word-break: break-word; }
+    .borrar { background: transparent; color: var(--rojo); padding: .25rem .5rem; }
+    .vacio { padding: 1.5rem 1rem; color: var(--suave); text-align: center; }
+    .error { color: var(--rojo); min-height: 1.5rem; margin: -.75rem 0 1rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Mis tareas</h1>
+    <p class="resumen" id="resumen">Cargando…</p>
+
+    <form id="formulario">
+      <label for="titulo" hidden>Nueva tarea</label>
+      <input type="text" id="titulo" placeholder="¿Qué tienes que hacer?" maxlength="200" autocomplete="off">
+      <button type="submit" class="agregar">Agregar</button>
+    </form>
+    <p class="error" id="error" role="alert"></p>
+
+    <ul id="lista"></ul>
+  </main>
+
+  <script>
+    const lista = document.getElementById('lista');
+    const resumen = document.getElementById('resumen');
+    const errorTxt = document.getElementById('error');
+    const formulario = document.getElementById('formulario');
+    const inputTitulo = document.getElementById('titulo');
+
+    function mostrarError(msg) { errorTxt.textContent = msg || ''; }
+
+    async function cargar() {
+      try {
+        const res = await fetch('/api/tareas');
+        const tareas = await res.json();
+        pintar(tareas);
+      } catch {
+        mostrarError('No se pudo conectar con el servidor.');
+      }
+    }
+
+    function pintar(tareas) {
+      lista.innerHTML = '';
+      const pendientes = tareas.filter(t => !t.completada).length;
+      resumen.textContent = tareas.length === 0
+        ? 'Aún no hay tareas.'
+        : `${pendientes} pendiente${pendientes === 1 ? '' : 's'} de ${tareas.length}`;
+
+      if (tareas.length === 0) {
+        lista.innerHTML = '<li class="vacio">Escribe tu primera tarea arriba y pulsa Agregar.</li>';
+        return;
+      }
+
+      for (const t of tareas) {
+        const li = document.createElement('li');
+        if (t.completada) li.classList.add('hecha');
+
+        const check = document.createElement('input');
+        check.type = 'checkbox';
+        check.checked = t.completada;
+        check.setAttribute('aria-label', 'Marcar como completada');
+        check.addEventListener('change', () => actualizar(t.id, check.checked));
+
+        const texto = document.createElement('span');
+        texto.textContent = t.titulo;
+
+        const borrar = document.createElement('button');
+        borrar.className = 'borrar';
+        borrar.textContent = 'Eliminar';
+        borrar.addEventListener('click', () => eliminar(t.id));
+
+        li.append(check, texto, borrar);
+        lista.appendChild(li);
+      }
+    }
+
+    formulario.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const titulo = inputTitulo.value.trim();
+      if (!titulo) return mostrarError('Escribe un título para la tarea.');
+      const res = await fetch('/api/tareas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ titulo })
+      });
+      if (!res.ok) return mostrarError((await res.json()).error);
+      inputTitulo.value = '';
+      mostrarError();
+      cargar();
+    });
+
+    async function actualizar(id, completada) {
+      await fetch(`/api/tareas/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completada })
+      });
+      cargar();
+    }
+
+    async function eliminar(id) {
+      await fetch(`/api/tareas/${id}`, { method: 'DELETE' });
+      cargar();
+    }
+
+    cargar();
+  </script>
+</body>
+</html>
